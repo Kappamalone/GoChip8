@@ -71,22 +71,23 @@ func (c *CPU) loadRom(filePath string) {
 
 }
 
-func (c *CPU) cycle() {
+func (c *CPU) cycle() (string, bool) {
 	//The fetch-decode-cycle for the system
 	c.opcode = uint16(c.memory[c.pc])<<8 | uint16(c.memory[c.pc+1])
 	c.pc += 2
 
-	c.decodeAndExecute()
+	return c.decodeAndExecute()
 }
 
 func (c *CPU) decodeAndExecute() (string, bool) {
 	//Handles getting operands from the opcode and executing them
+
 	identifier := (c.opcode & 0xF000) >> 12
 	addr := (c.opcode & 0x0FFF)
 	kk := uint8(c.opcode & 0x00FF)
 	x := uint8(c.opcode & 0x0F00 >> 8)
-	//y := uint8(c.opcode & 0x00F0) >> 4
-	n := c.opcode & 0x000F
+	y := uint8(c.opcode & 0x00F0) >> 4
+	n := uint8(c.opcode & 0x000F)
 
 	instructionExecuted := "Err"
 	drawBool := false
@@ -113,6 +114,7 @@ func (c *CPU) decodeAndExecute() (string, bool) {
 		instructionExecuted = "LD I"
 	case 0xD:
 		instructionExecuted = "DRW" //implement draw
+		c.DRW(x,y,n)
 		drawBool = true
 	}
 
@@ -149,7 +151,26 @@ func (c *CPU) LDI(nnn uint16) {
 }
 
 func (c *CPU) DRW(x uint8, y uint8, n uint8) {
+	xcoord := c.V[x]
+	ycoord := c.V[y]
+	c.V[0xF] = 0
 
+	for bit := uint8(0); bit < n; bit++ {
+		byteData := c.memory[c.index + uint16(bit)]
+
+		if ycoord < 32 && xcoord < 64 {
+			bitData := byteData & (2^(7-bit))
+			c.display[ycoord][xcoord] ^= bitData
+
+			//Check for collision
+			if (bitData == 1) && (c.display[ycoord][xcoord] == 0) {
+				c.V[0xF] = 1
+			}
+
+			xcoord++
+		}
+		ycoord++
+	}
 }
 
 func main() {
