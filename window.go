@@ -2,11 +2,14 @@ package main
 
 import (
 	"github.com/veandco/go-sdl2/sdl"
+	"fmt"
 )
 
-var white uint32 = 0x9a5f61
-var black uint32 = 0xd4dcd7
-var multiplier int32 = 20
+var white uint32 = 0x2C2F33
+var black uint32 = 0x7289DA
+var multiplier int32 = 17
+var perim int32 = 4
+var perimColor uint32 = 0x7289DA
 
 func checkErr(err error, desc string) {
 	if err != nil {
@@ -14,11 +17,16 @@ func checkErr(err error, desc string) {
 	}
 }
 
+func setRenderColor(renderer *sdl.Renderer, color uint32){
+	renderer.SetDrawColor(uint8((color&0xFF0000)>>16), uint8((color&0x00FF00)>>8), uint8((color & 0x0000FF)), 1)
+}
+
 func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 
-	//Window size vars
-	var width int32 = 64 * multiplier
-	var height int32 = 32 * multiplier
+	//Window size vars //game height //debug side
+	var width int32 = (64 * multiplier + (perim * 2))// + (7*multiplier)
+	//Window size vars //game height //debug under
+	var height int32 = (32 * multiplier + (perim * 2))
 
 	//Initialise SDL
 	err := sdl.Init(sdl.INIT_EVERYTHING)
@@ -37,19 +45,18 @@ func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 	renderer, err := sdl.CreateRenderer(window, -1, sdl.RENDERER_ACCELERATED)
 	checkErr(err, "renderer creation error")
 
-	rect := sdl.Rect{0, 0, width, height}
-	renderer.SetDrawColor(uint8((white&0xFF0000)>>16), uint8((white&0x00FF00)>>8), uint8((white & 0x0000FF)), 1)
-	renderer.Clear()
-	renderer.DrawRect(&rect)
-	renderer.Present()
-
+	//Draw borders onto screen
+	setRenderColor(renderer,perimColor)
+	//border1 := sdl.Rect{0,0,width,height}
+	//renderer.FillRect(&border1)
+	border2 := sdl.Rect{0,0,64*multiplier+(perim*2),32*multiplier+(perim*2)}
+	renderer.FillRect(&border2)
 	return window, surface, renderer
 }
 
 func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Renderer, videoArr [32][64]uint8) {
 	//Called at 60fps or something of that sorts
 	var color uint32
-	renderer.Clear()
 
 	//Loop through 64x32 space and draw rects
 	//Color determined by value held by the videoArr
@@ -60,13 +67,18 @@ func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Rende
 			} else {
 				color = white
 			}
-			renderer.SetDrawColor(uint8((color&0xFF0000)>>16), uint8((color&0x00FF00)>>8), uint8((color & 0x0000FF)), 1)
-			rect := sdl.Rect{int32(x) * multiplier, int32(y) * multiplier, multiplier, multiplier}
-			renderer.DrawRect(&rect)
+			setRenderColor(renderer,color)
+			rect := sdl.Rect{int32(x) * multiplier + perim, int32(y) * multiplier + perim, multiplier, multiplier}
 			renderer.FillRect(&rect)
 		}
 	}
 	renderer.Present()
+}
+
+func drawDebug(){
+	//Function to draw all debug information to screen
+
+	//Right debug panel
 }
 
 func main() {
@@ -78,11 +90,11 @@ func main() {
 
 	cpu := initCPU("roms/IBM Logo.ch8")
 
-	for i := 0; i < 400; i++ {
-		instructionExecuted, drawBool := cpu.cycle()
-		println(instructionExecuted)
+	for i := 0; i < 1500; i++ {
+		memoryLocation,instructionExecuted, drawBool := cpu.cycle()
+		fmt.Printf("%s - %s\n",memoryLocation,instructionExecuted)
 		if drawBool {
-			drawFromArray(window, surface, renderer, cpu.getDisplay())
+			drawFromArray(window, surface, renderer, cpu.display)
 		}
 
 	}

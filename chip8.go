@@ -72,7 +72,7 @@ func (c *CPU) loadRom(filePath string) {
 
 }
 
-func (c *CPU) cycle() (string, bool) {
+func (c *CPU) cycle() (string,string, bool) {
 	//The fetch-decode-cycle for the system
 	c.opcode = uint16(c.memory[c.pc])<<8 | uint16(c.memory[c.pc+1])
 	c.pc += 2
@@ -80,7 +80,7 @@ func (c *CPU) cycle() (string, bool) {
 	return c.decodeAndExecute()
 }
 
-func (c *CPU) decodeAndExecute() (string, bool) {
+func (c *CPU) decodeAndExecute() (string,string, bool) {
 	//Handles getting operands from the opcode and executing them
 
 	identifier := (c.opcode & 0xF000) >> 12
@@ -90,7 +90,8 @@ func (c *CPU) decodeAndExecute() (string, bool) {
 	y := uint8(c.opcode&0x00F0) >> 4
 	n := uint8(c.opcode & 0x000F)
 
-	instructionExecuted := "Err"
+	memoryLocation := fmt.Sprintf("%x",c.pc-2)
+	instruction := "Err"
 	drawBool := false
 
 	//Instruction decoding
@@ -98,29 +99,28 @@ func (c *CPU) decodeAndExecute() (string, bool) {
 	case 0x0:
 		if kk == 0xE0 {
 			c.CLS()
-			instructionExecuted = "CLS"
+			instruction = "CLS"
 			drawBool = true
 		}
 	case 0x1:
 		c.JP(addr)
-		instructionExecuted = "JP Addr"
+		instruction = fmt.Sprintf("JP 0x%x",addr)
 	case 0x6:
 		c.LDVx(x, kk)
-		instructionExecuted = "LD Vx"
+		instruction = fmt.Sprintf("LD V %x %x",x,kk)
 	case 0x7:
 		c.ADDVx(x, kk)
-		instructionExecuted = "ADD Vx"
+		instruction = fmt.Sprintf("ADD V %x %x",x,kk)
 	case 0xA:
 		c.LDI(addr)
-		instructionExecuted = "LD I"
+		instruction = fmt.Sprintf("LD I %x",addr)
 	case 0xD:
-		instructionExecuted = "DRW"
+		instruction = fmt.Sprintf("DRW %x %x %x",x,y,n)
 		c.DRW(x, y, n)
 		drawBool = true
 	}
-
-	fmt.Println(instructionExecuted, drawBool)
-	return instructionExecuted, drawBool
+	
+	return memoryLocation, instruction, drawBool
 
 }
 
@@ -176,13 +176,3 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 		xcoord -= 8 //Sprites are eight by 8, and so the xcoord should be shifted accordingly for each line, kind of like a typewriter
 		ycoord++
 	}
-
-}
-
-func (c *CPU) getDisplay() [32][64]uint8 {
-	return c.display
-}
-
-func (c *CPU) getRegisters() [16]uint8 {
-	return c.V
-}
