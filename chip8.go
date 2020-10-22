@@ -176,3 +176,4 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 		xcoord -= 8 //Sprites are eight by 8, and so the xcoord should be shifted accordingly for each line, kind of like a typewriter
 		ycoord++
 	}
+}

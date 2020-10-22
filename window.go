@@ -2,14 +2,26 @@ package main
 
 import (
 	"github.com/veandco/go-sdl2/sdl"
+	"github.com/veandco/go-sdl2/ttf"
 	"fmt"
 )
-
+//Color vars
 var white uint32 = 0x2C2F33
 var black uint32 = 0x7289DA
-var multiplier int32 = 17
-var perim int32 = 4
 var perimColor uint32 = 0x7289DA
+
+//Window size var
+var multiplier int32 = 13
+var perim int32 = 3
+
+var debugWidth int32 = (17 * multiplier)
+var debugHeight int32 = (12 * multiplier)
+
+var width int32 = (64 * multiplier)
+var height int32 = (32 * multiplier)
+
+var screenWidth int32 = (64 * multiplier + (perim * 2)) + debugWidth + perim
+var screenHeight int32 = (32 * multiplier + (perim * 2)) + debugHeight + perim
 
 func checkErr(err error, desc string) {
 	if err != nil {
@@ -22,19 +34,13 @@ func setRenderColor(renderer *sdl.Renderer, color uint32){
 }
 
 func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
-
-	//Window size vars //game height //debug side
-	var width int32 = (64 * multiplier + (perim * 2))// + (7*multiplier)
-	//Window size vars //game height //debug under
-	var height int32 = (32 * multiplier + (perim * 2))
-
 	//Initialise SDL
 	err := sdl.Init(sdl.INIT_EVERYTHING)
 	checkErr(err, "SDL initialisation error")
 
 	//Create window
 	window, err := sdl.CreateWindow("GoChip-8", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED,
-		width, height, sdl.WINDOW_SHOWN)
+		screenWidth, screenHeight, sdl.WINDOW_SHOWN)
 	checkErr(err, "Window creation error")
 
 	//Get surface
@@ -47,10 +53,10 @@ func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 
 	//Draw borders onto screen
 	setRenderColor(renderer,perimColor)
-	//border1 := sdl.Rect{0,0,width,height}
-	//renderer.FillRect(&border1)
-	border2 := sdl.Rect{0,0,64*multiplier+(perim*2),32*multiplier+(perim*2)}
-	renderer.FillRect(&border2)
+	border1 := sdl.Rect{0,0,screenWidth,screenHeight}
+	renderer.FillRect(&border1)
+	//border2 := sdl.Rect{0,0,width+(perim*2),height+(perim*2)}
+	//renderer.FillRect(&border2)
 	return window, surface, renderer
 }
 
@@ -68,17 +74,25 @@ func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Rende
 				color = white
 			}
 			setRenderColor(renderer,color)
-			rect := sdl.Rect{int32(x) * multiplier + perim, int32(y) * multiplier + perim, multiplier, multiplier}
-			renderer.FillRect(&rect)
+			pixel := sdl.Rect{int32(x) * multiplier + perim, int32(y) * multiplier + perim, multiplier, multiplier}
+			renderer.FillRect(&pixel)
 		}
 	}
 	renderer.Present()
 }
 
-func drawDebug(){
+func drawDebug(renderer *sdl.Renderer){
 	//Function to draw all debug information to screen
 
+	setRenderColor(renderer,white)
 	//Right debug panel
+	rightPanel := sdl.Rect{width+(perim*2),perim,debugWidth,height+debugHeight}
+	renderer.FillRect(&rightPanel)
+
+	//Bottom debug panel
+	bottomPanel := sdl.Rect{perim,perim*2+height,width,debugHeight}
+	renderer.FillRect(&bottomPanel)
+
 }
 
 func main() {
@@ -89,14 +103,14 @@ func main() {
 	defer window.Destroy()
 
 	cpu := initCPU("roms/IBM Logo.ch8")
+	drawDebug(renderer)
 
-	for i := 0; i < 1500; i++ {
+	for i := 0; i < 3000; i++ {
 		memoryLocation,instructionExecuted, drawBool := cpu.cycle()
 		fmt.Printf("%s - %s\n",memoryLocation,instructionExecuted)
 		if drawBool {
 			drawFromArray(window, surface, renderer, cpu.display)
 		}
-
 	}
 
 	/*
