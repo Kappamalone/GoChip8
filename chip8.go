@@ -15,10 +15,12 @@ type CPU struct {
 	V       [16]uint8     //Register V0-VF
 	stack   [16]uint16    //16 levels of stack
 
-	pc     uint16 //Program counter
-	opcode uint16 //Current opcode
-	index  uint16 //Index register
-	stkptr uint8  //Stack pointer
+	pc         uint16 //Program counter
+	opcode     uint16 //Current opcode
+	index      uint16 //Index register
+	stkptr     uint8  //Stack pointer
+	delayTimer uint16 //Delay timer
+	soundTimer uint16 //Sound timer
 }
 
 func initCPU(rom string) *CPU {
@@ -72,7 +74,7 @@ func (c *CPU) loadRom(filePath string) {
 
 }
 
-func (c *CPU) cycle() (string,string, bool) {
+func (c *CPU) cycle() (string, string, bool) {
 	//The fetch-decode-cycle for the system
 	c.opcode = uint16(c.memory[c.pc])<<8 | uint16(c.memory[c.pc+1])
 	c.pc += 2
@@ -80,7 +82,7 @@ func (c *CPU) cycle() (string,string, bool) {
 	return c.decodeAndExecute()
 }
 
-func (c *CPU) decodeAndExecute() (string,string, bool) {
+func (c *CPU) decodeAndExecute() (string, string, bool) {
 	//Handles getting operands from the opcode and executing them
 
 	identifier := (c.opcode & 0xF000) >> 12
@@ -90,7 +92,7 @@ func (c *CPU) decodeAndExecute() (string,string, bool) {
 	y := uint8(c.opcode&0x00F0) >> 4
 	n := uint8(c.opcode & 0x000F)
 
-	memoryLocation := fmt.Sprintf("%x",c.pc-2)
+	memoryLocation := fmt.Sprintf("%x", c.pc-2)
 	instruction := "Err"
 	drawBool := false
 
@@ -104,22 +106,22 @@ func (c *CPU) decodeAndExecute() (string,string, bool) {
 		}
 	case 0x1:
 		c.JP(addr)
-		instruction = fmt.Sprintf("JP %x",addr)
+		instruction = fmt.Sprintf("JP %x", addr)
 	case 0x6:
 		c.LDVx(x, kk)
-		instruction = fmt.Sprintf("LD V %x %x",x,kk)
+		instruction = fmt.Sprintf("LD V %x %x", x, kk)
 	case 0x7:
 		c.ADDVx(x, kk)
-		instruction = fmt.Sprintf("ADD V %x %x",x,kk)
+		instruction = fmt.Sprintf("ADD V %x %x", x, kk)
 	case 0xA:
 		c.LDI(addr)
-		instruction = fmt.Sprintf("LD I %x",addr)
+		instruction = fmt.Sprintf("LD I %x", addr)
 	case 0xD:
-		instruction = fmt.Sprintf("DRW %x %x %x",x,y,n)
+		instruction = fmt.Sprintf("DRW %x %x %x", x, y, n)
 		c.DRW(x, y, n)
 		drawBool = true
 	}
-	
+
 	return memoryLocation, instruction, drawBool
 
 }
