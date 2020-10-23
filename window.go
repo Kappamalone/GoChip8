@@ -6,7 +6,6 @@ import (
 	"github.com/gizak/termui/v3/widgets"
 	"github.com/veandco/go-sdl2/sdl"
 	"strings"
-	//"strconv"
 )
 
 //Color vars
@@ -147,7 +146,7 @@ func getCPUStack(c CPU)(string){
 		stringLine := fmt.Sprintf("[S%X](fg:green) = [#%X](fg:yellow)",i,c.stack[i])
 		cpuStackFormatted = append(cpuStackFormatted,stringLine)
 	}
-	return strings.Join(cpuStackFormatted,"\n")
+	return "\n"+strings.Join(cpuStackFormatted,"\n")
 }
 
 func main() {
@@ -156,7 +155,12 @@ func main() {
 	//Destroy window, quit SDL subsystems and quit termui
 	defer sdl.Quit()
 	defer window.Destroy()
+	defer renderer.Destroy()
 	defer ui.Close()
+
+	
+	stepMode := 1 //Used to check if instruction-by-instruction mode is toggled
+	executing := -1 //Used to pause cpu
 
 	//Initialise vm
 	cpu := initCPU("roms/IBM Logo.ch8")
@@ -166,38 +170,53 @@ func main() {
 
 	//Setup terminal debugging windows
 	instructionDebug, cpuVDebug, cpuGDebug, cpuStack := initDebugging()
-	execute := 0
 
 	running := true
+	executed := 0
 	for running {
-		if execute < 100 {
-			sdl.Delay(1000 / 600) //Run emulator at 60fps
-			//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
-			memoryLocation, instructionExecuted, drawBool := cpu.cycle()
-			memoryAndInstruction := fmt.Sprintf("[0x%s](fg:green)    ---    [%s](fg:yellow,)\n", memoryLocation, instructionExecuted)
-
-			//Appends instruction to the instructionSlice to display in the debugging panel
-			appendInstruction(&instructionSlice, memoryAndInstruction)
-
-			//Draw to screen if cpu cycle updated screen
-			if drawBool {
-				drawFromArray(window, surface, renderer, cpu.display)
-			}
-
-			//Draw debug text from cpu
-			instructionDebug.Text = "\n" + strings.Join(instructionSlice[:], "\n")
-			cpuVDebug.Text, cpuGDebug.Text = getCPURegisters(*cpu)
-			cpuStack.Text = getCPUStack(*cpu)
-			ui.Render(instructionDebug, cpuVDebug, cpuGDebug,cpuStack)
-			execute++
+		//Allow for step by step instruction execution
+		if stepMode == -1 {
+			fmt.Scanln()
 		}
+
+		if executed < 10 {
+			if executing == 1 {
+				//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
+				memoryLocation, instructionExecuted, drawBool := cpu.cycle()
+				memoryAndInstruction := fmt.Sprintf("[0x%s](fg:green)    ---    [%s](fg:yellow,)\n", memoryLocation, instructionExecuted)
+
+				//Appends instruction to the instructionSlice to display in the debugging panel
+				appendInstruction(&instructionSlice, memoryAndInstruction)
+
+				//Draw to screen if cpu cycle updated screen
+				if drawBool {
+					drawFromArray(window, surface, renderer, cpu.display)
+				}
+
+				//Draw debug text from cpu
+				instructionDebug.Text = "\n" + strings.Join(instructionSlice[:], "\n")
+				cpuVDebug.Text, cpuGDebug.Text = getCPURegisters(*cpu)
+				cpuStack.Text = getCPUStack(*cpu)
+				ui.Render(instructionDebug, cpuVDebug, cpuGDebug,cpuStack)
+
+				executed++
+			}
+		}
+
 
 		//Handle keyboard inputs
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 			switch e := event.(type) {
 			case *sdl.KeyboardEvent:
 				if e.Type == sdl.KEYDOWN {
+					//fmt.Println(e.Keysym.Scancode)
 					switch e.Keysym.Scancode {
+					case 12:
+						//Toggles with I
+						stepMode *= -1
+					case 19:
+						//Toggle with P
+						executing *= -1
 					case 30: //implement proper keypress detection from here onwards
 						//fmt.Print("woo")
 					}
