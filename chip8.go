@@ -104,7 +104,7 @@ func (c *CPU) decodeAndExecute() (string,string, bool) {
 		}
 	case 0x1:
 		c.JP(addr)
-		instruction = fmt.Sprintf("JP 0x%x",addr)
+		instruction = fmt.Sprintf("JP %x",addr)
 	case 0x6:
 		c.LDVx(x, kk)
 		instruction = fmt.Sprintf("LD V %x %x",x,kk)

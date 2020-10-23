@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 )
-//Instruction queue
-var instructionQueue [14]string
 
 //Color vars
 var white uint32 = 0x2C2F33
@@ -63,6 +61,24 @@ func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 	return window, surface, renderer
 }
 
+func initDebugging()(*widgets.Paragraph){
+	//Initialise termui components
+
+	instructionDebug := widgets.NewParagraph()
+	instructionDebug.Title = "Instructions"
+	instructionDebug.BorderStyle.Fg = ui.ColorBlue
+	instructionDebug.SetRect(0,0,30,30)
+
+	/*
+	cpuStateDebug := widgets.NewParagraph()
+	cpuStateDebug.Title = "Registers"
+	cpuStateDebug.BorderStyle.Fg = ui.ColorMagenta
+	cpuStateDebug.SetRect(40,0,30,15)
+	*/
+
+	return instructionDebug
+}
+
 func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Renderer, videoArr [32][64]uint8) {
 	//Called at 60fps or something of that sorts
 	var color uint32
@@ -84,17 +100,21 @@ func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Rende
 	renderer.Present()
 }
 
-func enqueueInstruction(memoryAndInstruction string){
-	//Enqueues input instruction and dequeues last instruction
-	//Not exactly the best implementation but hey it works
-	//BROKEN
-	tempArr := instructionQueue[1:]
-	instructionQueue[0] = memoryAndInstruction
-	for i := 1; i < len(instructionQueue); i++{
-		instructionQueue[i] = tempArr[i-1]
-	}
-	tempArr[len(instructionQueue)-2] = ""
+
+func appendInstruction(slice *[]string,memoryAndInstruction string){
+	//Appends instruction to instruction slice and removes first element
+	
+	*slice = append(*slice,memoryAndInstruction)
+	*slice = (*slice)[1:]
 }	
+
+func getCPURegisters(c CPU){
+	//Return formatted cpu register data: 4x5 of v0-vf and pc,sp,dt,st and index
+}
+
+func getCPUStack(c CPU){
+	//Return formatted cpu stack data
+}
 
 
 func main() {
@@ -106,36 +126,25 @@ func main() {
 	defer ui.Close()
 
 	//Initialise vm
-	cpu := initCPU("roms/IBM Logo.ch8")
+	cpu := initCPU("roms/test_opcode.ch8")
+
+	//Instruction slice
+	var instructionSlice = make([]string,14)
 
 	//Setup terminal debugging windows
-	instructionDebug := widgets.NewParagraph()
-	instructionDebug.Title = "Instructions"
-	instructionDebug.Text = "\n"+strings.Join(instructionQueue[:],"\n")
-	instructionDebug.BorderStyle.Fg = ui.ColorBlue
-	instructionDebug.SetRect(0,0,30,30)
-
-	/*
-	cpuStateDebug := widgets.NewParagraph()
-	cpuStateDebug.Title = "Registers"
-	cpuStateDebug.Text = strings.Join(cpu.V[:]," ") //Get string version of registers and pc,sp,dt,st in 4x5 format
-	cpuStateDebug.BorderStyle.Fg = ui.ColorMagenta
-	cpuStateDebug.SetRect(40,0,30,30)
-	*/
-	
-	ui.Render(instructionDebug)
-
+	instructionDebug := initDebugging()
 	execute := 0
 	
 	running := true
 	for running {
-		if execute < 14 {
+		if execute < 100 {
+			sdl.Delay(1000/600) //Run emulator at 60fps
 			//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
 			memoryLocation,instructionExecuted, drawBool := cpu.cycle()
-			memoryAndInstruction := fmt.Sprintf("[%s](fg:green)    ---    [%s](fg:yellow,)\n",memoryLocation,instructionExecuted)
+			memoryAndInstruction := fmt.Sprintf("[0x%s](fg:green)    ---    [%s](fg:yellow,)\n",memoryLocation,instructionExecuted)
 
-			//Enqueue instruction in the instructionQueue to display in the debugging panel
-			enqueueInstruction(memoryAndInstruction)
+			//Appends instruction to the instructionSlice to display in the debugging panel
+			appendInstruction(&instructionSlice,memoryAndInstruction)
 
 			//Draw to screen if cpu cycle updated screen
 			if drawBool {
@@ -143,11 +152,11 @@ func main() {
 			}
 
 			//Draw debug text from instructionQueue
-			instructionDebug.Text = "\n"+strings.Join(instructionQueue[:],"\n")
+			instructionDebug.Text = "\n"+strings.Join(instructionSlice[:],"\n")
 			ui.Render(instructionDebug)
 			execute++
 		}
-		sdl.Delay(1000/60) //Run emulator at 60fps
+		
 
 		//Handle keyboard inputs
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
