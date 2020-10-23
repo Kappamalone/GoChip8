@@ -2,9 +2,14 @@ package main
 
 import (
 	"github.com/veandco/go-sdl2/sdl"
-	"github.com/veandco/go-sdl2/ttf"
+	ui "github.com/gizak/termui/v3"
+	"github.com/gizak/termui/v3/widgets"
 	"fmt"
+	"strings"
 )
+//Instruction queue
+var instructionQueue [14]string
+
 //Color vars
 var white uint32 = 0x2C2F33
 var black uint32 = 0x7289DA
@@ -14,14 +19,8 @@ var perimColor uint32 = 0x7289DA
 var multiplier int32 = 13
 var perim int32 = 3
 
-var debugWidth int32 = (17 * multiplier)
-var debugHeight int32 = (12 * multiplier)
-
-var width int32 = (64 * multiplier)
-var height int32 = (32 * multiplier)
-
-var screenWidth int32 = (64 * multiplier + (perim * 2)) + debugWidth + perim
-var screenHeight int32 = (32 * multiplier + (perim * 2)) + debugHeight + perim
+var screenWidth int32 = (64 * multiplier + (perim * 2)) 
+var screenHeight int32 = (32 * multiplier + (perim * 2))
 
 func checkErr(err error, desc string) {
 	if err != nil {
@@ -37,6 +36,10 @@ func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 	//Initialise SDL
 	err := sdl.Init(sdl.INIT_EVERYTHING)
 	checkErr(err, "SDL initialisation error")
+
+	//Initialise termui
+	err = ui.Init()
+	checkErr(err,"Failed to intialise termui")
 
 	//Create window
 	window, err := sdl.CreateWindow("GoChip-8", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED,
@@ -81,66 +84,93 @@ func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Rende
 	renderer.Present()
 }
 
-func drawDebug(renderer *sdl.Renderer){
-	//Function to draw all debug information to screen
+func enqueueInstruction(memoryAndInstruction string){
+	//Enqueues input instruction and dequeues last instruction
+	//Not exactly the best implementation but hey it works
+	//BROKEN
+	tempArr := instructionQueue[1:]
+	instructionQueue[0] = memoryAndInstruction
+	for i := 1; i < len(instructionQueue); i++{
+		instructionQueue[i] = tempArr[i-1]
+	}
+	tempArr[len(instructionQueue)-2] = ""
+}	
 
-	setRenderColor(renderer,white)
-	//Right debug panel
-	rightPanel := sdl.Rect{width+(perim*2),perim,debugWidth,height+debugHeight}
-	renderer.FillRect(&rightPanel)
-
-	//Bottom debug panel
-	bottomPanel := sdl.Rect{perim,perim*2+height,width,debugHeight}
-	renderer.FillRect(&bottomPanel)
-
-}
 
 func main() {
 	window, surface, renderer := initWindow()
 
-	//Destroy window and quit SDL subsystems
+	//Destroy window, quit SDL subsystems and quit termui
 	defer sdl.Quit()
 	defer window.Destroy()
+	defer ui.Close()
 
+	//Initialise vm
 	cpu := initCPU("roms/IBM Logo.ch8")
-	drawDebug(renderer)
 
-	for i := 0; i < 3000; i++ {
-		memoryLocation,instructionExecuted, drawBool := cpu.cycle()
-		fmt.Printf("%s - %s\n",memoryLocation,instructionExecuted)
-		if drawBool {
-			drawFromArray(window, surface, renderer, cpu.display)
-		}
-	}
+	//Setup terminal debugging windows
+	instructionDebug := widgets.NewParagraph()
+	instructionDebug.Title = "Instructions"
+	instructionDebug.Text = "\n"+strings.Join(instructionQueue[:],"\n")
+	instructionDebug.BorderStyle.Fg = ui.ColorBlue
+	instructionDebug.SetRect(0,0,30,30)
 
 	/*
-		running := true
-		for running {
+	cpuStateDebug := widgets.NewParagraph()
+	cpuStateDebug.Title = "Registers"
+	cpuStateDebug.Text = strings.Join(cpu.V[:]," ") //Get string version of registers and pc,sp,dt,st in 4x5 format
+	cpuStateDebug.BorderStyle.Fg = ui.ColorMagenta
+	cpuStateDebug.SetRect(40,0,30,30)
+	*/
+	
+	ui.Render(instructionDebug)
 
-			sdl.Delay(1000/60) //Run emulator at 60fps
+	execute := 0
+	
+	running := true
+	for running {
+		if execute < 14 {
+			//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
+			memoryLocation,instructionExecuted, drawBool := cpu.cycle()
+			memoryAndInstruction := fmt.Sprintf("[%s](fg:green)    ---    [%s](fg:yellow,)\n",memoryLocation,instructionExecuted)
 
-			//Handle keyboard inputs
-			for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-				switch e := event.(type) {
-				case *sdl.KeyboardEvent:
-					if e.Type == sdl.KEYDOWN {
-						switch e.Keysym.Scancode {
-						case 30: //implement proper keypress detection from here onwards
-							//fmt.Print("woo")
-						}
-						//30 31 32 33
-						//20 26 8 21
-						//4 22 7 9
-						//29 27 6 25
-					} else {
-						//println("Hah keyup")
+			//Enqueue instruction in the instructionQueue to display in the debugging panel
+			enqueueInstruction(memoryAndInstruction)
+
+			//Draw to screen if cpu cycle updated screen
+			if drawBool {
+				drawFromArray(window, surface, renderer, cpu.display)
+			}
+
+			//Draw debug text from instructionQueue
+			instructionDebug.Text = "\n"+strings.Join(instructionQueue[:],"\n")
+			ui.Render(instructionDebug)
+			execute++
+		}
+		sdl.Delay(1000/60) //Run emulator at 60fps
+
+		//Handle keyboard inputs
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+			switch e := event.(type) {
+			case *sdl.KeyboardEvent:
+				if e.Type == sdl.KEYDOWN {
+					switch e.Keysym.Scancode {
+					case 30: //implement proper keypress detection from here onwards
+						//fmt.Print("woo")
 					}
-				case *sdl.QuitEvent:
-					println("Quit")
-					running = false
-					break
+					//30 31 32 33
+					//20 26 8 21
+					//4 22 7 9
+					//29 27 6 25
+				} else {
+					//println("Hah keyup")
 				}
+			case *sdl.QuitEvent:
+				println("Quit")
+				running = false
+				break
 			}
 		}
-	*/
+	}
+	
 }
