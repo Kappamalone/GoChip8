@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math"
+	"math/rand"
 )
 
 //CPU describes the general shape of the CHIP-8
@@ -129,6 +130,7 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 //The following functions are all the opcodes for the chip8 system
 
 func (c *CPU) CLS() {
+	//00E0
 	for y := 0; y < 32; y++ {
 		for x := 0; x < 64; x++ {
 			c.display[y][x] = 0
@@ -136,23 +138,126 @@ func (c *CPU) CLS() {
 	}
 }
 
+func (c *CPU) RET() {
+	//00EE
+	c.pc = c.stack[c.stkptr-1]
+	c.stkptr--
+}
+
 func (c *CPU) JP(addr uint16) {
+	//1nnn
 	c.pc = addr
 }
 
+func (c *CPU) CALL(addr uint16) {
+	//2nnn
+	c.stkptr++
+	c.stack[c.stkptr] = addr
+}
+
+func (c *CPU) SEVx(x uint8, kk uint8) {
+	//3xkk
+	if c.V[x] == kk {
+		c.pc += 2
+	}
+}
+
+func (c *CPU) SNEVx(x uint8, kk uint8) {
+	//4xkk
+	if c.V[x] != kk {
+		c.pc += 2
+	}
+}
+
+func (c *CPU) SEVxVy(x uint8, y uint8) {
+	//5xy0
+	if c.V[x] == c.V[y] {
+		c.pc += 2
+	}
+}
+
 func (c *CPU) LDVx(x uint8, kk uint8) {
+	//6xkk
 	c.V[x] = kk
 }
 
 func (c *CPU) ADDVx(x uint8, kk uint8) {
+	//7xkk
 	c.V[x] += kk
 }
 
-func (c *CPU) LDI(nnn uint16) {
-	c.index = nnn
+func (c *CPU) LDVxVy(x uint8, y uint8) {
+	//8xy0
+	c.V[x] = c.V[y]
+}
+
+func (c *CPU) ORVxVy(x uint8, y uint8) {
+	//8xy1
+	c.V[x] |= c.V[y]
+}
+
+func (c *CPU) ANDVxVy(x uint8, y uint8) {
+	//8xy2
+	c.V[x] &= c.V[y]
+}
+
+func (c *CPU) XORVxVy(x uint8, y uint8) {
+	//8xy3
+	c.V[x] ^= c.V[y]
+}
+
+func (c *CPU) ADDVxVy(x uint8, y uint8) {
+	//8xy4 UNIMPLEMENTED
+}
+
+func (c *CPU) SUBVxVy(x uint8, y uint8) {
+	//8xy5 UNIMPLEMENTED
+}
+
+func (c *CPU) SHRVx(x uint8) {
+	//8xy6 POSSIBLE PROBLEM
+	c.V[0xF] = c.V[x] & 1
+	c.V[x] /= 2
+}
+
+func (c *CPU) SUBNVxVy(x uint8, y uint8) {
+	//8xy7
+	c.V[0xF] = 0
+	if c.V[y] > c.V[x] {
+		c.V[0xF] = 1
+	}
+	c.V[x] = c.V[y] - c.V[x]
+}
+
+func (c *CPU) SHLVx(x uint8) {
+	//8xyE
+	c.V[0xF] = c.V[x] & 128
+	c.V[x] *= 2
+}
+
+func (c *CPU) SNEVxVy(x uint8, y uint8) {
+	if c.V[x] != c.V[y] {
+		c.pc += 2
+	}
+}
+
+func (c *CPU) LDI(addr uint16) {
+	//Annn
+	c.index = addr
+}
+
+func (c *CPU) JPV(addr uint16) {
+	//Bnnn
+	c.pc = addr + uint16(c.V[0])
+}
+
+func (c *CPU) RNDVx(x uint8, kk uint8) {
+	//Cxnn
+	c.V[x] = uint8(rand.Intn(256)) & kk
 }
 
 func (c *CPU) DRW(x uint8, y uint8, n uint8) {
+	//Dxyn
 	xcoord := c.V[x] % 64 //modulo to wrap coords
 	ycoord := c.V[y] % 32 //modulo to wrap coords
 	c.V[0xF] = 0
@@ -161,11 +266,7 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 		byteData := c.memory[c.index+y]
 		for x := 0; x < 8; x++ {
 			if xcoord < 64 && ycoord < 32 {
-				var bitData uint8 = 0
-				if (byteData & uint8(math.Pow(2, float64(7-x)))) != 0 {
-					bitData = 1
-				}
-
+				bitData := byteData & uint8(math.Pow(2, float64(7-x))) >> (7 - x)
 				c.display[ycoord][xcoord] ^= bitData
 
 				if bitData == 1 && c.display[ycoord][xcoord] == 0 {
@@ -177,5 +278,37 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 		}
 		xcoord -= 8 //Sprites are eight by 8, and so the xcoord should be shifted accordingly for each line, kind of like a typewriter
 		ycoord++
+	}
+}
+
+func (c *CPU) ADDIVx(x uint8) {
+	//Fx1E
+	c.index += uint16(x)
+}
+
+func (c *CPU) LDFVx(x uint8) {
+	//Fx29
+	c.index = uint16(5 * c.V[x])
+}
+
+func (c *CPU) LDBVx(x uint8) {
+	//Fx33
+	value := c.V[x]
+	c.memory[c.index] = value / 100
+	c.memory[c.index+1] = (value / 10) % 10
+	c.memory[c.index+2] = value % 10
+}
+
+func (c *CPU) LDIVx(x uint8) {
+	//Fx55 POSSIBLE PROBLEM
+	for i := uint16(0); i < uint16(x)+1; i++ {
+		c.memory[c.index+i] = c.V[i]
+	}
+}
+
+func (c *CPU) LDVXI(x uint8) {
+	//Fx65 POSSIBLE PROBLEM
+	for i := uint16(0); i < uint16(x)+1; i++ {
+		c.V[i] = c.memory[c.index+i]
 	}
 }
