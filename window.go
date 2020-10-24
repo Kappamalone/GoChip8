@@ -14,7 +14,7 @@ var black uint32 = 0x7289DA
 var perimColor uint32 = 0x7289DA
 
 //Window size var
-var multiplier int32 = 13
+var multiplier int32 = 15
 var perim int32 = 3
 
 var screenWidth int32 = (64*multiplier + (perim * 2))
@@ -71,18 +71,31 @@ func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph
 
 	cpuVRegisters := widgets.NewParagraph()
 	cpuVRegisters.Title = "V Registers"
-	cpuVRegisters.BorderStyle.Fg = ui.ColorMagenta
+	cpuVRegisters.BorderStyle.Fg = ui.ColorRed
 	cpuVRegisters.SetRect(31, 0, 60, 10)
 
 	cpuOtherRegisters := widgets.NewParagraph()
 	cpuOtherRegisters.Title = "General Registers"
-	cpuOtherRegisters.BorderStyle.Fg = ui.ColorMagenta
-	cpuOtherRegisters.SetRect(61, 0, 85, 10)
+	cpuOtherRegisters.BorderStyle.Fg = ui.ColorCyan
+	cpuOtherRegisters.SetRect(61, 0, 85, 30)
 
 	cpuStack := widgets.NewParagraph()
 	cpuStack.Title = "Stack"
 	cpuStack.BorderStyle.Fg = ui.ColorRed
-	cpuStack.SetRect(31, 11, 60, 30)
+	cpuStack.SetRect(31, 10, 60, 30)
+
+	fillEmptySpace := widgets.NewParagraph()
+	fillEmptySpace.Title = ""
+	fillEmptySpace.BorderStyle.Fg = ui.ColorWhite
+	fillEmptySpace.SetRect(86, 0, 119, 30)
+	empty := make([]string, 0)
+	for i := 0; i < 100; i++ {
+		for i := 0; i < 80; i++ {
+			empty = append(empty, "[. . . . . . . . . . . . . . . .](fg:white)")
+		}
+	}
+	fillEmptySpace.Text = strings.Join(empty, "\n")
+	ui.Render(fillEmptySpace)
 
 	return instructionDebug, cpuVRegisters, cpuOtherRegisters, cpuStack
 }
@@ -122,6 +135,7 @@ func getCPURegisters(c CPU) (string, string) {
 	for i := 0; i < 8; i++ {
 		var stringLine string
 		//To make sure the columns line up nicely
+
 		if len(fmt.Sprintf("%X", c.V[i])) == 2 {
 			stringLine = fmt.Sprintf("[V%X](fg:green) = [#%X](fg:yellow)       [V%X](fg:green) = [#%X](fg:yellow)", i, c.V[i], i+8, c.V[i+8])
 		} else {
@@ -132,21 +146,26 @@ func getCPURegisters(c CPU) (string, string) {
 
 	//May god forgive me for this line of code
 	cpuGeneralFormatted := strings.Split(fmt.Sprintf(
-		"[PC](fg:green) = [#%X](fg:yellow)   [SP](fg:green) = [#%X](fg:yellow),[DT](fg:green) = [#%X](fg:yellow)     [ST](fg:green) = [#%X](fg:yellow)",
-		c.pc, c.stkptr, c.delayTimer, c.soundTimer), ",")
+		"[PC](fg:green) = [#%X](fg:yellow)   [SP](fg:green) = [#%X](fg:yellow),[DT](fg:green) = [#%X](fg:yellow)     [ST](fg:green) = [#%X](fg:yellow),[I](fg:green)  = [#%X](fg:yellow)",
+		c.pc, c.stkptr, c.delayTimer, c.soundTimer, c.index), ",")
 
-	return strings.Join(cpuVFormatted, "\n"), strings.Join(cpuGeneralFormatted, "\n")
+	emptySpace := make([]string, 0)
+	for i := 0; i < 80; i++ {
+		emptySpace = append(emptySpace, "[. . . . . . . . . . .](fg:cyan)")
+	}
+
+	return strings.Join(cpuVFormatted, "\n"), strings.Join(cpuGeneralFormatted, "\n") + "\n" + strings.Join(emptySpace, "\n")
 
 }
 
-func getCPUStack(c CPU)(string){
+func getCPUStack(c CPU) string {
 	//Return formatted cpu stack data
-	cpuStackFormatted := make([]string,0)
-	for i := 0; i < 16; i++{
-		stringLine := fmt.Sprintf("[S%X](fg:green) = [#%X](fg:yellow)",i,c.stack[i])
-		cpuStackFormatted = append(cpuStackFormatted,stringLine)
+	cpuStackFormatted := make([]string, 0)
+	for i := 0; i < 16; i++ {
+		stringLine := fmt.Sprintf("[S%X](fg:green) = [#%X](fg:yellow)", i, c.stack[i])
+		cpuStackFormatted = append(cpuStackFormatted, stringLine)
 	}
-	return "\n"+strings.Join(cpuStackFormatted,"\n")
+	return "\n" + strings.Join(cpuStackFormatted, "\n")
 }
 
 func main() {
@@ -158,9 +177,10 @@ func main() {
 	defer renderer.Destroy()
 	defer ui.Close()
 
-	
-	stepMode := 1 //Used to check if instruction-by-instruction mode is toggled
-	executing := -1 //Used to pause cpu
+	stepMode := 1  //Used to check if instruction-by-instruction mode is toggled
+	executing := 1 //Used to pause cpu
+	running := true
+	executed := 0
 
 	//Initialise vm
 	cpu := initCPU("roms/IBM Logo.ch8")
@@ -171,15 +191,13 @@ func main() {
 	//Setup terminal debugging windows
 	instructionDebug, cpuVDebug, cpuGDebug, cpuStack := initDebugging()
 
-	running := true
-	executed := 0
 	for running {
 		//Allow for step by step instruction execution
 		if stepMode == -1 {
 			fmt.Scanln()
 		}
 
-		if executed < 10 {
+		if executed < 100 {
 			if executing == 1 {
 				//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
 				memoryLocation, instructionExecuted, drawBool := cpu.cycle()
@@ -197,12 +215,11 @@ func main() {
 				instructionDebug.Text = "\n" + strings.Join(instructionSlice[:], "\n")
 				cpuVDebug.Text, cpuGDebug.Text = getCPURegisters(*cpu)
 				cpuStack.Text = getCPUStack(*cpu)
-				ui.Render(instructionDebug, cpuVDebug, cpuGDebug,cpuStack)
+				ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack)
 
 				executed++
 			}
 		}
-
 
 		//Handle keyboard inputs
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -212,6 +229,7 @@ func main() {
 					//fmt.Println(e.Keysym.Scancode)
 					switch e.Keysym.Scancode {
 					case 12:
+						//TODO: Reimplement this as a way to run the cpu as a command line thing
 						//Toggles with I
 						stepMode *= -1
 					case 19:
