@@ -61,13 +61,13 @@ func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 	return window, surface, renderer
 }
 
-func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph) {
+func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph,*widgets.Paragraph) {
 	//Initialise termui components
 
 	instructionDebug := widgets.NewParagraph()
 	instructionDebug.Title = "Instructions"
 	instructionDebug.BorderStyle.Fg = ui.ColorBlue
-	instructionDebug.SetRect(0, 0, 30, 30)
+	instructionDebug.SetRect(1, 0, 30, 30)
 
 	cpuVRegisters := widgets.NewParagraph()
 	cpuVRegisters.Title = "V Registers"
@@ -76,7 +76,7 @@ func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph
 
 	cpuOtherRegisters := widgets.NewParagraph()
 	cpuOtherRegisters.Title = "General Registers"
-	cpuOtherRegisters.BorderStyle.Fg = ui.ColorCyan
+	cpuOtherRegisters.BorderStyle.Fg = ui.ColorMagenta
 	cpuOtherRegisters.SetRect(61, 0, 85, 30)
 
 	cpuStack := widgets.NewParagraph()
@@ -84,20 +84,20 @@ func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph
 	cpuStack.BorderStyle.Fg = ui.ColorRed
 	cpuStack.SetRect(31, 10, 60, 30)
 
-	fillEmptySpace := widgets.NewParagraph()
-	fillEmptySpace.Title = ""
-	fillEmptySpace.BorderStyle.Fg = ui.ColorWhite
-	fillEmptySpace.SetRect(86, 0, 119, 30)
+	debugMode := widgets.NewParagraph()
+	debugMode.Title = "Debug modes"
+	debugMode.BorderStyle.Fg = ui.ColorWhite
+	debugMode.SetRect(86, 0, 119, 30)
+	/*
 	empty := make([]string, 0)
 	for i := 0; i < 100; i++ {
 		for i := 0; i < 80; i++ {
 			empty = append(empty, "[. . . . . . . . . . . . . . . .](fg:white)")
 		}
-	}
-	fillEmptySpace.Text = strings.Join(empty, "\n")
-	ui.Render(fillEmptySpace)
+	} 
+	debugMode.Text = strings.Join(empty, "\n") */
 
-	return instructionDebug, cpuVRegisters, cpuOtherRegisters, cpuStack
+	return instructionDebug, cpuVRegisters, cpuOtherRegisters, cpuStack, debugMode
 }
 
 func drawFromArray(window *sdl.Window, surface *sdl.Surface, renderer *sdl.Renderer, videoArr [32][64]uint8) {
@@ -128,7 +128,7 @@ func appendInstruction(slice *[]string, memoryAndInstruction string) {
 	*slice = (*slice)[1:]
 }
 
-func getCPURegisters(c CPU) (string, string) {
+func getDebugInformation(c CPU,running int,stepping int) (string, string,string,string) {
 	//Return formatted cpu register data: 4x5 of v0-vf and pc,sp,dt,st and index
 	cpuVFormatted := make([]string, 0)
 
@@ -149,24 +149,39 @@ func getCPURegisters(c CPU) (string, string) {
 		"[PC](fg:green) = [#%X](fg:yellow)   [SP](fg:green) = [#%X](fg:yellow),[DT](fg:green) = [#%X](fg:yellow)     [ST](fg:green) = [#%X](fg:yellow),[I](fg:green)  = [#%X](fg:yellow)",
 		c.pc, c.stkptr, c.delayTimer, c.soundTimer, c.index), ",")
 
+	//Empty space for general cpu info
 	emptySpace := make([]string, 0)
-	for i := 0; i < 80; i++ {
+	for i := 0; i < 30; i++ {
 		emptySpace = append(emptySpace, "[. . . . . . . . . . .](fg:cyan)")
 	}
 
-	return strings.Join(cpuVFormatted, "\n"), strings.Join(cpuGeneralFormatted, "\n") + "\n" + strings.Join(emptySpace, "\n")
+	modes := make([]string,0)
+	modes = append(modes,fmt.Sprintf(" [Running](fg:yellow): %t",running == 1))
+	modes = append(modes,fmt.Sprintf(" [Stepmode](fg:yellow): %t",stepping == 1))
 
-}
+	//Empty space for modes
+	emptySpace2 := make([]string,0)
+	for i := 0; i < 30; i++{
+		emptySpace2 = append(emptySpace2,"[. . . . . . . . . . . . . . . .](fg:white)")
+	}
 
-func getCPUStack(c CPU) string {
 	//Return formatted cpu stack data
 	cpuStackFormatted := make([]string, 0)
 	for i := 0; i < 16; i++ {
 		stringLine := fmt.Sprintf("[S%X](fg:green) = [#%X](fg:yellow)", i, c.stack[i])
 		cpuStackFormatted = append(cpuStackFormatted, stringLine)
 	}
-	return "\n" + strings.Join(cpuStackFormatted, "\n")
+
+
+	cpuVFormattedf := strings.Join(cpuVFormatted, "\n")
+	cpuGeneralFormattedf := strings.Join(cpuGeneralFormatted, "\n") + "\n" + strings.Join(emptySpace, "\n")
+	modesf := "\n" + strings.Join(modes,"\n") + "\n" + strings.Join(emptySpace2,"\n")
+	cpuStackF := "\n" + strings.Join(cpuStackFormatted, "\n")
+
+	return cpuVFormattedf, cpuGeneralFormattedf, modesf,cpuStackF
+
 }
+
 
 func main() {
 	window, surface, renderer := initWindow()
@@ -177,49 +192,73 @@ func main() {
 	defer renderer.Destroy()
 	defer ui.Close()
 
-	stepMode := 1  //Used to check if instruction-by-instruction mode is toggled
+	//TODO: SHOW STEPMODE AND PAUSEMODE IN DEBUGGER!!!
+	stepMode := 1 //Used to check if instruction-by-instruction mode is toggled
 	executing := 1 //Used to pause cpu
 	running := true
-	executed := 0
+	//executed := 0
 
-	//Initialise vm
-	cpu := initCPU("roms/IBM Logo.ch8")
+	//Initialise vm and window
+	cpu := initCPU("roms/BC_test.ch8")
+	drawFromArray(window, surface, renderer, cpu.display)
 
-	//Instruction slice
+	//Instruction slice thats rendered on the debug window
 	var instructionSlice = make([]string, 14)
 
 	//Setup terminal debugging windows
-	instructionDebug, cpuVDebug, cpuGDebug, cpuStack := initDebugging()
+	instructionDebug, cpuVDebug, cpuGDebug, cpuStack, debugMode := initDebugging()
 
 	for running {
 		//Allow for step by step instruction execution
-		if stepMode == -1 {
-			fmt.Scanln()
-		}
-
-		if executed < 100 {
-			if executing == 1 {
-				//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
-				memoryLocation, instructionExecuted, drawBool := cpu.cycle()
-				memoryAndInstruction := fmt.Sprintf("[0x%s](fg:green)    ---    [%s](fg:yellow,)\n", memoryLocation, instructionExecuted)
-
-				//Appends instruction to the instructionSlice to display in the debugging panel
-				appendInstruction(&instructionSlice, memoryAndInstruction)
-
-				//Draw to screen if cpu cycle updated screen
-				if drawBool {
-					drawFromArray(window, surface, renderer, cpu.display)
+		if stepMode == 1 {
+			pause := true
+			for pause {
+				for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+					switch e := event.(type) {
+					case *sdl.KeyboardEvent:
+						if e.Type == sdl.KEYDOWN {
+							//Toggle stepmode off; kinda ugly but eh
+							if e.Keysym.Scancode == 12{
+								stepMode *= -1
+								_ , _, debugMode.Text,_ = getDebugInformation(*cpu,executing,stepMode)
+								ui.Render(debugMode)
+								pause = false
+							} else if e.Keysym.Scancode == 19 {
+								executing *= -1
+								_ , _, debugMode.Text,_ = getDebugInformation(*cpu,executing,stepMode)
+								ui.Render(debugMode)
+							} else if e.Keysym.Scancode == 18{ //press O to step
+								pause = false
+							}
+						}
+					case *sdl.QuitEvent:
+						pause = false
+						running = false
+						break
+					}
 				}
-
-				//Draw debug text from cpu
-				instructionDebug.Text = "\n" + strings.Join(instructionSlice[:], "\n")
-				cpuVDebug.Text, cpuGDebug.Text = getCPURegisters(*cpu)
-				cpuStack.Text = getCPUStack(*cpu)
-				ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack)
-
-				executed++
 			}
 		}
+
+		if executing == 1 {
+			//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
+			memoryLocation, instructionExecuted, drawBool := cpu.cycle()
+			memoryAndInstruction := fmt.Sprintf("[0x%s](fg:green)   ---   [%s](fg:yellow,)\n", memoryLocation, instructionExecuted)
+
+			//Appends instruction to the instructionSlice to display in the debugging panel
+			appendInstruction(&instructionSlice, memoryAndInstruction)
+
+			//Draw to screen if cpu cycle updated screen
+			if drawBool {
+				drawFromArray(window, surface, renderer, cpu.display)
+			}
+			//executed++
+		}
+
+		//Draw debug text from cpu
+		instructionDebug.Text = "\n" + strings.Join(instructionSlice[:], "\n")
+		cpuVDebug.Text, cpuGDebug.Text,debugMode.Text,cpuStack.Text = getDebugInformation(*cpu,executing,stepMode)
+		ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack,debugMode)
 
 		//Handle keyboard inputs
 		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -229,11 +268,11 @@ func main() {
 					//fmt.Println(e.Keysym.Scancode)
 					switch e.Keysym.Scancode {
 					case 12:
-						//TODO: Reimplement this as a way to run the cpu as a command line thing
-						//Toggles with I
+						//TODO: also this as a way to run the cpu as a command line thing
+						//Toggle stepmode with I
 						stepMode *= -1
 					case 19:
-						//Toggle with P
+						//Toggle pause with P
 						executing *= -1
 					case 30: //implement proper keypress detection from here onwards
 						//fmt.Print("woo")
@@ -246,7 +285,6 @@ func main() {
 					//println("Hah keyup")
 				}
 			case *sdl.QuitEvent:
-				println("Quit")
 				running = false
 				break
 			}
