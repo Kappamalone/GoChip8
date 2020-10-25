@@ -93,7 +93,7 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 	y := uint8(c.opcode&0x00F0) >> 4
 	n := uint8(c.opcode & 0x000F)
 
-	memoryLocation := fmt.Sprintf("%x", c.pc-2)
+	memoryLocation := fmt.Sprintf("%X", c.pc-2)
 	instruction := "Err"
 	drawBool := false
 
@@ -104,23 +104,99 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 			c.CLS()
 			instruction = "CLS"
 			drawBool = true
+		} else if kk == 0xEE {
+			c.RET()
+			instruction = "RET"
 		}
 	case 0x1:
 		c.JP(addr)
-		instruction = fmt.Sprintf("JP %x", addr)
+		instruction = fmt.Sprintf("JP #%X", addr)
+	case 0x2:
+		c.CALL(addr)
+		instruction = fmt.Sprintf("CALL #%X", addr)
+	case 0x3:
+		c.SEVx(x, kk)
+		instruction = fmt.Sprintf("SE V%X #%X", x, kk)
+	case 0x4:
+		c.SNEVx(x, kk)
+		instruction = fmt.Sprintf("SNE V%X #%X", x, kk)
+	case 0x5:
+		c.SEVxVy(x,y)
+		instruction = fmt.Sprintf("SE V%X V%X",x,y)
 	case 0x6:
 		c.LDVx(x, kk)
-		instruction = fmt.Sprintf("LD V %x %x", x, kk)
+		instruction = fmt.Sprintf("LD V%X #%X", x, kk)
 	case 0x7:
 		c.ADDVx(x, kk)
-		instruction = fmt.Sprintf("ADD V %x %x", x, kk)
+		instruction = fmt.Sprintf("ADD V%X #%X", x, kk)
+	case 0x8:
+		switch n {
+		case 0x0:
+			c.LDVxVy(x, y)
+			instruction = fmt.Sprintf("LD V%X V%X", x, y)
+		case 0x1:
+			c.ORVxVy(x, y)
+			instruction = fmt.Sprintf("OR V%X V%X", x, y)
+		case 0x2:
+			c.ANDVxVy(x, y)
+			instruction = fmt.Sprintf("AND V%X V%X", x, y)
+		case 0x3:
+			c.XORVxVy(x, y)
+			instruction = fmt.Sprintf("XOR V%X V%X", x, y)
+		case 0x4:
+			c.ADDVxVy(x, y)
+			instruction = fmt.Sprintf("ADD V%X V%X", x, y)
+		case 0x5:
+			c.SUBVxVy(x, y)
+			instruction = fmt.Sprintf("SUB V%X V%X", x, y)
+		case 0x6:
+			c.SHRVx(x)
+			instruction = fmt.Sprintf("SHR V%X", x)
+		case 0x7:
+			c.SUBNVxVy(x, y)
+			instruction = fmt.Sprintf("SUBN V%X V%X", x, y)
+		case 0xE:
+			c.SHLVx(x)
+			instruction = fmt.Sprintf("SHL V%X", x)
+		}
+	case 0x9:
+		c.SNEVxVy(x, y)
+		instruction = fmt.Sprintf("SNE V%X V%X", x, y)
 	case 0xA:
 		c.LDI(addr)
-		instruction = fmt.Sprintf("LD I %x", addr)
+		instruction = fmt.Sprintf("LD I #%X", addr)
+	case 0xB:
+		c.JPV(addr)
+		instruction = fmt.Sprintf("JP V0 #%X", addr)
+	case 0xC:
+		c.RNDVx(x, kk)
+		instruction = fmt.Sprintf("RND V%X #%X", x, kk)
 	case 0xD:
-		instruction = fmt.Sprintf("DRW %x %x %x", x, y, n)
+		instruction = fmt.Sprintf("DRW V%X V%X #%X", x, y, n)
 		c.DRW(x, y, n)
 		drawBool = true
+	case 0xF:
+		switch kk {
+		case 0x1E:
+			c.ADDIVx(x)
+			instruction = fmt.Sprintf("ADD I V%X", x)
+		case 0x29:
+			c.LDFVx(x)
+			instruction = fmt.Sprintf("LD F V%X", x)
+		case 0x33:
+			c.LDBVx(x)
+			instruction = fmt.Sprintf("LD B V%X", x)
+		case 0x55:
+			c.LDIVx(x)
+			instruction = fmt.Sprintf("LD I V%X", x)
+		case 0x65:
+			c.LDVxI(x)
+			instruction = fmt.Sprintf("LD V%X I", x)
+		}
+	default:
+		if instruction == "Err" {
+			instruction = fmt.Sprintf("Unimplemented #%X",c.opcode)
+		}
 	}
 
 	return memoryLocation, instruction, drawBool
@@ -129,8 +205,8 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 
 //The following functions are all the opcodes for the chip8 system
 
+//CLS 00E0
 func (c *CPU) CLS() {
-	//00E0
 	for y := 0; y < 32; y++ {
 		for x := 0; x < 64; x++ {
 			c.display[y][x] = 0
@@ -138,90 +214,102 @@ func (c *CPU) CLS() {
 	}
 }
 
+//RET 00EE
 func (c *CPU) RET() {
-	//00EE
 	c.pc = c.stack[c.stkptr-1]
 	c.stkptr--
 }
 
+//JP 1nnn
 func (c *CPU) JP(addr uint16) {
-	//1nnn
 	c.pc = addr
 }
 
+//CALL 2nnn
 func (c *CPU) CALL(addr uint16) {
-	//2nnn
-	c.stkptr++
 	c.stack[c.stkptr] = addr
+	c.stkptr++
 }
 
+//SEVx 3xkk
 func (c *CPU) SEVx(x uint8, kk uint8) {
-	//3xkk
 	if c.V[x] == kk {
 		c.pc += 2
 	}
 }
 
+//SNEVx 4xkk
 func (c *CPU) SNEVx(x uint8, kk uint8) {
-	//4xkk
 	if c.V[x] != kk {
 		c.pc += 2
 	}
 }
 
+//SEVxVy 5xy0
 func (c *CPU) SEVxVy(x uint8, y uint8) {
-	//5xy0
 	if c.V[x] == c.V[y] {
 		c.pc += 2
 	}
 }
 
+//LDVx 6xkk
 func (c *CPU) LDVx(x uint8, kk uint8) {
-	//6xkk
 	c.V[x] = kk
 }
 
+//ADDVx 7xkk
 func (c *CPU) ADDVx(x uint8, kk uint8) {
-	//7xkk
 	c.V[x] += kk
 }
 
+//LDVxVy 8xy0
 func (c *CPU) LDVxVy(x uint8, y uint8) {
-	//8xy0
 	c.V[x] = c.V[y]
 }
 
+//ORVxVy 8xy1
 func (c *CPU) ORVxVy(x uint8, y uint8) {
-	//8xy1
 	c.V[x] |= c.V[y]
 }
 
+//ANDVxVy 8xy2
 func (c *CPU) ANDVxVy(x uint8, y uint8) {
-	//8xy2
 	c.V[x] &= c.V[y]
 }
 
+//XORVxVy 8xy3
 func (c *CPU) XORVxVy(x uint8, y uint8) {
-	//8xy3
 	c.V[x] ^= c.V[y]
 }
 
+//ADDVxVy 8xy4
 func (c *CPU) ADDVxVy(x uint8, y uint8) {
-	//8xy4 UNIMPLEMENTED
+	overflow := c.V[x] + c.V[y]
+	c.V[0xF] = 0
+	if overflow > 255 {
+		c.V[0xF] = 1
+	}
+	c.V[x] += c.V[y]
 }
 
+//SUBVxVy 8xy5
 func (c *CPU) SUBVxVy(x uint8, y uint8) {
-	//8xy5 UNIMPLEMENTED
+	c.V[0xF] = 0
+	if c.V[x] > c.V[y] {
+		c.V[0xF] = 1
+	}
+	c.V[x] -= c.V[y]
 }
 
+//SHRVx 8xy6
 func (c *CPU) SHRVx(x uint8) {
-	//8xy6 POSSIBLE PROBLEM
 	c.V[0xF] = c.V[x] & 1
 	c.V[x] /= 2
 }
 
+//SUBNVxVy 8xy7
 func (c *CPU) SUBNVxVy(x uint8, y uint8) {
-	//8xy7
+
 	c.V[0xF] = 0
 	if c.V[y] > c.V[x] {
 		c.V[0xF] = 1
@@ -229,33 +317,36 @@ func (c *CPU) SUBNVxVy(x uint8, y uint8) {
 	c.V[x] = c.V[y] - c.V[x]
 }
 
+//SHLVx 8xyE
 func (c *CPU) SHLVx(x uint8) {
-	//8xyE
-	c.V[0xF] = c.V[x] & 128
+
+	c.V[0xF] = (c.V[x] & 128) >> 7
 	c.V[x] *= 2
 }
 
+//SNEVxVy 9xy0
 func (c *CPU) SNEVxVy(x uint8, y uint8) {
 	if c.V[x] != c.V[y] {
 		c.pc += 2
 	}
 }
 
+//LDI Annn
 func (c *CPU) LDI(addr uint16) {
-	//Annn
 	c.index = addr
 }
 
+//JPV Bnnn
 func (c *CPU) JPV(addr uint16) {
-	//Bnnn
 	c.pc = addr + uint16(c.V[0])
 }
 
+//RNDVx Cxnn
 func (c *CPU) RNDVx(x uint8, kk uint8) {
-	//Cxnn
 	c.V[x] = uint8(rand.Intn(256)) & kk
 }
 
+//DRW Dxyn
 func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 	//Dxyn
 	xcoord := c.V[x] % 64 //modulo to wrap coords
@@ -281,33 +372,36 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 	}
 }
 
+//ADDIVx Fx1E
 func (c *CPU) ADDIVx(x uint8) {
 	//Fx1E
-	c.index += uint16(x)
+	c.index += uint16(c.V[x])
 }
 
+//LDFVx Fx29
 func (c *CPU) LDFVx(x uint8) {
-	//Fx29
 	c.index = uint16(5 * c.V[x])
 }
 
+//LDBVx Fx33
 func (c *CPU) LDBVx(x uint8) {
-	//Fx33
 	value := c.V[x]
 	c.memory[c.index] = value / 100
 	c.memory[c.index+1] = (value / 10) % 10
 	c.memory[c.index+2] = value % 10
+	value2 := c.V[x]
+	fmt.Println(value,value2)
 }
 
+//LDIVx Fx55
 func (c *CPU) LDIVx(x uint8) {
-	//Fx55 POSSIBLE PROBLEM
 	for i := uint16(0); i < uint16(x)+1; i++ {
 		c.memory[c.index+i] = c.V[i]
 	}
 }
 
-func (c *CPU) LDVXI(x uint8) {
-	//Fx65 POSSIBLE PROBLEM
+//LDVxI Fx65
+func (c *CPU) LDVxI(x uint8) {
 	for i := uint16(0); i < uint16(x)+1; i++ {
 		c.V[i] = c.memory[c.index+i]
 	}
