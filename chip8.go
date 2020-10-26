@@ -16,10 +16,11 @@ type CPU struct {
 	V       [16]uint8     //Register V0-VF
 	stack   [16]uint16    //16 levels of stack
 
-	pc         uint16 //Program counter
-	opcode     uint16 //Current opcode
-	index      uint16 //Index register
-	stkptr     uint8  //Stack pointer
+	pc     uint16 //Program counter
+	opcode uint16 //Current opcode
+	index  uint16 //Index register
+	stkptr uint8  //Stack pointer
+
 	delayTimer uint16 //Delay timer
 	soundTimer uint16 //Sound timer
 }
@@ -94,7 +95,7 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 	n := uint8(c.opcode & 0x000F)
 
 	memoryLocation := fmt.Sprintf("%X", c.pc-2)
-	instruction := "Err"
+	instruction := fmt.Sprintf("ERR: #%X", c.opcode)
 	drawBool := false
 
 	//Instruction decoding
@@ -121,8 +122,8 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 		c.SNEVx(x, kk)
 		instruction = fmt.Sprintf("SNE V%X #%X", x, kk)
 	case 0x5:
-		c.SEVxVy(x,y)
-		instruction = fmt.Sprintf("SE V%X V%X",x,y)
+		c.SEVxVy(x, y)
+		instruction = fmt.Sprintf("SE V%X V%X", x, y)
 	case 0x6:
 		c.LDVx(x, kk)
 		instruction = fmt.Sprintf("LD V%X #%X", x, kk)
@@ -177,6 +178,15 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 		drawBool = true
 	case 0xF:
 		switch kk {
+		case 0x07:
+			c.LDVxDT(x)
+			instruction = fmt.Sprintf("LD V%X DT", x)
+		case 0x15:
+			c.LDDTVx(x)
+			instruction = fmt.Sprintf("LD DT V%X", x)
+		case 0x18:
+			c.LDSTVx(x)
+			instruction = fmt.Sprintf("LD ST V%X", x)
 		case 0x1E:
 			c.ADDIVx(x)
 			instruction = fmt.Sprintf("ADD I V%X", x)
@@ -192,10 +202,6 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 		case 0x65:
 			c.LDVxI(x)
 			instruction = fmt.Sprintf("LD V%X I", x)
-		}
-	default:
-		if instruction == "Err" {
-			instruction = fmt.Sprintf("Unimplemented #%X",c.opcode)
 		}
 	}
 
@@ -217,6 +223,7 @@ func (c *CPU) CLS() {
 //RET 00EE
 func (c *CPU) RET() {
 	c.pc = c.stack[c.stkptr-1]
+	c.stack[c.stkptr-1] = 0 //clear value from stack
 	c.stkptr--
 }
 
@@ -227,8 +234,9 @@ func (c *CPU) JP(addr uint16) {
 
 //CALL 2nnn
 func (c *CPU) CALL(addr uint16) {
-	c.stack[c.stkptr] = addr
+	c.stack[c.stkptr] = c.pc
 	c.stkptr++
+	c.pc = addr
 }
 
 //SEVx 3xkk
@@ -372,6 +380,21 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 	}
 }
 
+//LDVxDT Fx07
+func (c *CPU) LDVxDT(x uint8) {
+	c.V[x] = uint8(c.delayTimer)
+}
+
+//LDDTVx Fx15
+func (c *CPU) LDDTVx(x uint8) {
+	c.delayTimer = uint16(c.V[x])
+}
+
+//LDSTVx
+func (c *CPU) LDSTVx(x uint8) {
+	c.soundTimer = uint16(c.V[x])
+}
+
 //ADDIVx Fx1E
 func (c *CPU) ADDIVx(x uint8) {
 	//Fx1E
@@ -390,7 +413,7 @@ func (c *CPU) LDBVx(x uint8) {
 	c.memory[c.index+1] = (value / 10) % 10
 	c.memory[c.index+2] = value % 10
 	value2 := c.V[x]
-	fmt.Println(value,value2)
+	fmt.Println(value, value2)
 }
 
 //LDIVx Fx55
