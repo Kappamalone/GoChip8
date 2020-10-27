@@ -43,15 +43,15 @@ func initCPU(rom string) *CPU {
 	cpu.keyMap[33] = 0xC
 	cpu.keyMap[20] = 0x4
 	cpu.keyMap[26] = 0x5
-	cpu.keyMap[8] =  0x6
+	cpu.keyMap[8] = 0x6
 	cpu.keyMap[21] = 0xD
-	cpu.keyMap[4] =  0x7
+	cpu.keyMap[4] = 0x7
 	cpu.keyMap[22] = 0x8
-	cpu.keyMap[7] =  0x9
-	cpu.keyMap[9] =  0xE
+	cpu.keyMap[7] = 0x9
+	cpu.keyMap[9] = 0xE
 	cpu.keyMap[29] = 0xA
 	cpu.keyMap[27] = 0x0
-	cpu.keyMap[6] =  0xB
+	cpu.keyMap[6] = 0xB
 	cpu.keyMap[25] = 0xF
 
 	return cpu
