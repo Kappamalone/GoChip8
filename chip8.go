@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/veandco/go-sdl2/sdl"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -21,8 +22,11 @@ type CPU struct {
 	index  uint16 //Index register
 	stkptr uint8  //Stack pointer
 
-	delayTimer uint16 //Delay timer
-	soundTimer uint16 //Sound timer
+	delayTimer uint8 //Delay timer
+	soundTimer uint8 //Sound timer
+
+	keyMap    map[int]int //dict of scancode:keyinput
+	keyInputs [16]bool    //key inputs
 }
 
 func initCPU(rom string) *CPU {
@@ -30,6 +34,25 @@ func initCPU(rom string) *CPU {
 	cpu.pc = 0x200
 	cpu.loadFonts()
 	cpu.loadRom(rom)
+
+	//map out scancodes to the keyinput value
+	cpu.keyMap = make(map[int]int)
+	cpu.keyMap[30] = 0x1
+	cpu.keyMap[31] = 0x2
+	cpu.keyMap[32] = 0x3
+	cpu.keyMap[33] = 0xC
+	cpu.keyMap[20] = 0x4
+	cpu.keyMap[26] = 0x5
+	cpu.keyMap[8] =  0x6
+	cpu.keyMap[21] = 0xD
+	cpu.keyMap[4] =  0x7
+	cpu.keyMap[22] = 0x8
+	cpu.keyMap[7] =  0x9
+	cpu.keyMap[9] =  0xE
+	cpu.keyMap[29] = 0xA
+	cpu.keyMap[27] = 0x0
+	cpu.keyMap[6] =  0xB
+	cpu.keyMap[25] = 0xF
 
 	return cpu
 
@@ -176,11 +199,22 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 		instruction = fmt.Sprintf("DRW V%X V%X #%X", x, y, n)
 		c.DRW(x, y, n)
 		drawBool = true
+	case 0xE:
+		if n == 0xE {
+			c.SKPVx(x)
+			instruction = fmt.Sprintf("SKP V%X", x)
+		} else if n == 0x1 {
+			c.SKNPVx(x)
+			instruction = fmt.Sprintf("SKNP V%X", x)
+		}
 	case 0xF:
 		switch kk {
 		case 0x07:
 			c.LDVxDT(x)
 			instruction = fmt.Sprintf("LD V%X DT", x)
+		case 0x0A:
+			c.LDVxK(x)
+			instruction = fmt.Sprintf("LD V%X K", x)
 		case 0x15:
 			c.LDDTVx(x)
 			instruction = fmt.Sprintf("LD DT V%X", x)
@@ -207,6 +241,11 @@ func (c *CPU) decodeAndExecute() (string, string, bool) {
 
 	return memoryLocation, instruction, drawBool
 
+}
+
+func (c *CPU) handleKeypress(scancode sdl.Scancode, keystate bool) {
+	//Use the keymap to correctly handle keydown and keyups
+	c.keyInputs[c.keyMap[int(scancode)]] = keystate
 }
 
 //The following functions are all the opcodes for the chip8 system
@@ -380,19 +419,47 @@ func (c *CPU) DRW(x uint8, y uint8, n uint8) {
 	}
 }
 
+//SKPVx Ex9E
+func (c *CPU) SKPVx(x uint8) {
+	if c.keyInputs[c.V[x]] == true {
+		c.pc += 2
+	}
+}
+
+//SKNPVx Ex9E
+func (c *CPU) SKNPVx(x uint8) {
+	if c.keyInputs[c.V[x]] == false {
+		c.pc += 2
+	}
+}
+
 //LDVxDT Fx07
 func (c *CPU) LDVxDT(x uint8) {
-	c.V[x] = uint8(c.delayTimer)
+	c.V[x] = c.delayTimer
+}
+
+//LDVxK Fx0A
+func (c *CPU) LDVxK(x uint8) {
+	keypressed := false
+	for i := uint8(0); i < 16; i++ {
+		if c.keyInputs[i] == true {
+			c.V[x] = i
+			keypressed = true
+		}
+	}
+	if !keypressed {
+		c.pc -= 2
+	}
 }
 
 //LDDTVx Fx15
 func (c *CPU) LDDTVx(x uint8) {
-	c.delayTimer = uint16(c.V[x])
+	c.delayTimer = c.V[x]
 }
 
-//LDSTVx
+//LDSTVx Fx18
 func (c *CPU) LDSTVx(x uint8) {
-	c.soundTimer = uint16(c.V[x])
+	c.soundTimer = c.V[x]
 }
 
 //ADDIVx Fx1E
@@ -412,8 +479,6 @@ func (c *CPU) LDBVx(x uint8) {
 	c.memory[c.index] = value / 100
 	c.memory[c.index+1] = (value / 10) % 10
 	c.memory[c.index+2] = value % 10
-	value2 := c.V[x]
-	fmt.Println(value, value2)
 }
 
 //LDIVx Fx55

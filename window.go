@@ -16,7 +16,7 @@ var perimColor uint32 = 0x7289DA
 
 //Window size var
 var multiplier int32 = 15
-var perim int32 = 3
+var perim int32 = 6
 
 var screenWidth int32 = (64*multiplier + (perim * 2))
 var screenHeight int32 = (32*multiplier + (perim * 2))
@@ -25,12 +25,12 @@ var stepMode int = -1 //Used to check if instruction-by-instruction mode is togg
 var executing int = 1 //Used to pause cpu
 var running bool = true
 
-var speed int = 600 //make this a terminal configurable thingie
+var speed int = 1000
 var start time.Time = time.Now()
 
 //Initialise vm,window,surface and renderer
 var window, surface, renderer = initWindow()
-var cpu = initCPU("roms/pong.ch8")
+var cpu = initCPU("roms/PONG2")
 
 //Instruction slice thats rendered on the debug window
 var instructionSlice = make([]string, 14)
@@ -116,7 +116,7 @@ func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph
 	cpuOtherRegisters := widgets.NewParagraph()
 	cpuOtherRegisters.Title = "General Registers"
 	cpuOtherRegisters.BorderStyle.Fg = ui.ColorMagenta
-	cpuOtherRegisters.SetRect(61, 0, 97, 30)
+	cpuOtherRegisters.SetRect(61, 0, 92, 30)
 
 	cpuStack := widgets.NewParagraph()
 	cpuStack.Title = "Stack"
@@ -126,7 +126,7 @@ func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph
 	debugMode := widgets.NewParagraph()
 	debugMode.Title = "Debug modes"
 	debugMode.BorderStyle.Fg = ui.ColorWhite
-	debugMode.SetRect(98, 0, 119, 30)
+	debugMode.SetRect(93, 0, 119, 30)
 
 	return instructionDebug, cpuVRegisters, cpuOtherRegisters, cpuStack, debugMode
 }
@@ -160,34 +160,28 @@ func appendInstruction(slice *[]string, memoryAndInstruction string) {
 }
 
 func getDebugInformation(c CPU, running int, stepping int) (string, string, string, string) {
-	//Return formatted cpu register data: 4x5 of v0-vf and pc,sp,dt,st and index
+	//Return formatted cpu register data: 4x5 of v0-vf and pc,sp,dt,st and index as well as stack and modes
 	cpuVFormatted := make([]string, 0)
 
 	for i := 0; i < 8; i++ {
-		var stringLine string
-		//To make sure the columns line up nicely
-
-		if len(fmt.Sprintf("%X", c.V[i])) == 2 {
-			stringLine = fmt.Sprintf("[V%X](fg:green) = [#%X](fg:yellow)       [V%X](fg:green) = [#%X](fg:yellow)", i, c.V[i], i+8, c.V[i+8])
-		} else {
-			stringLine = fmt.Sprintf("[V%X](fg:green) = [#%X](fg:yellow)        [V%X](fg:green) = [#%X](fg:yellow)", i, c.V[i], i+8, c.V[i+8])
-		}
+		stringLine := fmt.Sprintf("[V%X](fg:green) = [#%02X](fg:yellow)       [V%X](fg:green) = [#%02X](fg:yellow)", i, c.V[i], i+8, c.V[i+8])
 		cpuVFormatted = append(cpuVFormatted, stringLine)
 	}
 
 	//May god forgive me for this line of code
 	cpuGeneralFormatted := strings.Split(fmt.Sprintf(
-		"[PC](fg:green) = [#%X](fg:yellow)   [SP](fg:green) = [#%X](fg:yellow),[DT](fg:green) = [#%X](fg:yellow)     [ST](fg:green) = [#%X](fg:yellow),[I](fg:green)  = [#%X](fg:yellow)",
+		"[PC](fg:green) = [#%04X](fg:yellow)   [SP](fg:green) = [#%02X](fg:yellow),[DT](fg:green) = [#%02X](fg:yellow)   [ST](fg:green) = [#%02X](fg:yellow),[I](fg:green)  = [#%04X](fg:yellow)",
 		c.pc, c.stkptr, c.delayTimer, c.soundTimer, c.index), ",")
 
 	modes := make([]string, 0)
 	modes = append(modes, fmt.Sprintf(" [Running](fg:yellow): %t", running == 1))
 	modes = append(modes, fmt.Sprintf(" [Stepmode](fg:yellow): %t", stepping == 1))
+	modes = append(modes, fmt.Sprintf(" [Speed](fg:yellow): %d", speed))
 
 	//Return formatted cpu stack data
 	cpuStackFormatted := make([]string, 0)
 	for i := 0; i < 16; i++ {
-		stringLine := fmt.Sprintf("[S%X](fg:green) = [#%X](fg:yellow)", i, c.stack[i])
+		stringLine := fmt.Sprintf("[S%X](fg:green) = [0x%04X](fg:yellow)", i, c.stack[i])
 		cpuStackFormatted = append(cpuStackFormatted, stringLine)
 	}
 
@@ -234,9 +228,11 @@ func main() {
 							case 47: // [ decreases speed of emulation
 								speed -= 10
 								limitSpeed(&speed)
+								quickUpdateDebug()
 							case 48: // ] increases speed of emulation
 								speed += 10
 								limitSpeed(&speed)
+								quickUpdateDebug()
 							}
 						}
 					case *sdl.QuitEvent:
@@ -247,16 +243,12 @@ func main() {
 				}
 			}
 		} else {
-			if time.Since(start) >= (time.Second)/10 {
-				for i := 0; i < speed/10; i++ {
-					//execute a certain number of cycles per 1/10th of a second
+			if time.Since(start) >= (time.Second)/100 {
+				for i := 0; i < speed/100; i++ {
+					//execute a certain number of cycles per 1/100th of a second
 					if executing == 1 && stepMode == -1 {
 						fullCycle()
 					}
-
-					//update timers at rate of 60hz
-					cpu.delayTimer--
-					cpu.soundTimer--
 
 					//Handle keyboard inputs
 					for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
@@ -274,30 +266,33 @@ func main() {
 									//Toggle pause with P
 									executing *= -1
 									quickUpdateDebug()
-
-								case 30: //implement proper keypress detection from here onwards
-								//fmt.Print("woo")
-
 								case 47: // [ decreases speed of emulation
 									speed -= 10
 									limitSpeed(&speed)
+									quickUpdateDebug()
 								case 48: // ] increases speed of emulation
 									speed += 10
 									limitSpeed(&speed)
+									quickUpdateDebug()
+								default:
+									cpu.handleKeypress(e.Keysym.Scancode, true)
 								}
-
-								//30 31 32 33
-								//20 26 8 21
-								//4 22 7 9
-								//29 27 6 25
-							} else {
-								//println("Hah keyup")
+							} else if e.Type == sdl.KEYUP {
+								cpu.handleKeypress(e.Keysym.Scancode, false)
 							}
 						case *sdl.QuitEvent:
 							running = false
 							break
 						}
 					}
+				}
+				//Decreasing timers at rate of 100hz rather than 60hz
+				//Because decrements of 0.6 aren't possible
+				if cpu.delayTimer > 0 {
+					cpu.delayTimer--
+				}
+				if cpu.soundTimer > 0 {
+					cpu.soundTimer--
 				}
 
 				start = time.Now()
@@ -311,10 +306,10 @@ func quickUpdateDebug() {
 	ui.Render(debugMode)
 }
 
-func limitSpeed(speed *int){
+func limitSpeed(speed *int) {
 	//limit speed of emulation
-	if *speed > 1200 {
-		*speed = 1200
+	if *speed > 2000 {
+		*speed = 2000
 	} else if *speed < 50 {
 		*speed = 50
 	}
