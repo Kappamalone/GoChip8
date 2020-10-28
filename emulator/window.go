@@ -217,7 +217,7 @@ func getDebugInformation(c CPU, running int, stepping int) (string, string, stri
 
 }
 
-func run() {
+func runWindow() {
 	//Init beep and related stuff
 	streamer, ctrl := initBeep()
 	speaker.Lock()
