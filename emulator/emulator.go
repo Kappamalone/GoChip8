@@ -1,5 +1,6 @@
 package emulator
 
-func main(){
+//RunEmulator Run everything
+func RunEmulator(){
 	runWindow()
 }
