@@ -1,12 +1,19 @@
-package main
+package emulator
 
 import (
 	"fmt"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 	"github.com/veandco/go-sdl2/sdl"
+
+	"github.com/faiface/beep"
+	"github.com/faiface/beep/mp3"
+	"github.com/faiface/beep/speaker"
+
+	"os"
 	"strings"
 	"time"
+	"strconv"
 )
 
 //Color vars
@@ -22,16 +29,18 @@ var screenWidth int32 = (64*multiplier + (perim * 2))
 var screenHeight int32 = (32*multiplier + (perim * 2))
 
 var stepMode int = -1 //Used to check if instruction-by-instruction mode is toggled
-var dcounter int = 0  //Used to check if debug should be updated every cycle or every instruction slice
 var executing int = 1 //Used to pause cpu
 var running bool = true
 
-var speed int = 600
+var s,_ = strconv.ParseInt(os.Args[2],10,64)
+var speed int = int(s)
+
+var timerCounter int = 0 //increment by 1 every 0.1s, is used to decrement timers at 60hz
 var start time.Time = time.Now()
 
 //Initialise vm,window,surface and renderer
 var window, surface, renderer = initWindow()
-var cpu = initCPU("roms/PONG2")
+var cpu = initCPU(fmt.Sprintf("%s",os.Args[1]))
 
 //Instruction slice thats rendered on the debug window
 var instructionSlice = make([]string, 14)
@@ -49,7 +58,7 @@ func setRenderColor(renderer *sdl.Renderer, color uint32) {
 	renderer.SetDrawColor(uint8((color&0xFF0000)>>16), uint8((color&0x00FF00)>>8), uint8((color & 0x0000FF)), 1)
 }
 
-func fullCycle(isStepping bool) { //If stepmode, then show debug every cycle
+func fullCycle() { //If stepmode, then show debug every cycle
 	//Get data from execution of a cpu cycle, such as instruction executed at a given memory location
 	memoryLocation, instructionExecuted, drawBool := cpu.cycle()
 	memoryAndInstruction := fmt.Sprintf("[0x%s](fg:green)   ---   [%s](fg:yellow,)\n", memoryLocation, instructionExecuted)
@@ -62,21 +71,9 @@ func fullCycle(isStepping bool) { //If stepmode, then show debug every cycle
 		drawFromArray(window, surface, renderer, &cpu.display)
 	}
 
-	//Draw debug text from cpu
+	//Set debug text from cpu
 	instructionDebug.Text = "\n" + strings.Join(instructionSlice[:], "\n")
 	cpuVDebug.Text, cpuGDebug.Text, debugMode.Text, cpuStack.Text = getDebugInformation(*cpu, executing, stepMode)
-
-	quickUpdateDebug()
-
-	if isStepping {
-		ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack, debugMode)
-	} else {
-		//show debug every instruction slice
-		if dcounter%14 == 0 {
-			ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack, debugMode)
-		}
-	}
-	dcounter++
 }
 
 func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
@@ -104,6 +101,18 @@ func initWindow() (*sdl.Window, *sdl.Surface, *sdl.Renderer) {
 	//border2 := sdl.Rect{0,0,width+(perim*2),height+(perim*2)}
 	//renderer.FillRect(&border2)
 	return window, surface, renderer
+}
+
+func initBeep() (beep.StreamSeekCloser, *beep.Ctrl) {
+	file, err := os.Open("beep.mp3")
+	checkErr(err, "couldn't find beep.mp3")
+
+	streamer, format, err := mp3.Decode(file)
+	checkErr(err, "couldn't decode beep.mp3")
+
+	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+	ctrl := &beep.Ctrl{Streamer: beep.Loop(-1, streamer)}
+	return streamer, ctrl
 }
 
 func initDebugging() (*widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph, *widgets.Paragraph) {
@@ -208,21 +217,35 @@ func getDebugInformation(c CPU, running int, stepping int) (string, string, stri
 
 }
 
-func main() {
+func run() {
+	//Init beep and related stuff
+	streamer, ctrl := initBeep()
+	speaker.Lock()
+	ctrl.Paused = true
+	speaker.Unlock()
+	speaker.Play(ctrl)
+
 	//draw the initial screen
 	drawFromArray(window, surface, renderer, &cpu.display)
 
-	//Destroy window, quit SDL subsystems and quit termui
+	//Destroy window, quit SDL subsystems,termui and beep
 	defer sdl.Quit()
 	defer window.Destroy()
 	defer renderer.Destroy()
 	defer ui.Close()
+	defer streamer.Close()
 
 	for running {
 		if stepMode == 1 {
+			//Prevent sound when stepping
+			speaker.Lock()
+			ctrl.Paused = true
+			speaker.Unlock()
+			
 			//Allow for step by step instruction execution
 			pause := true
 			for pause {
+				ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack, debugMode) //Draw debug menu
 				for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 					switch e := event.(type) {
 					case *sdl.KeyboardEvent:
@@ -237,7 +260,7 @@ func main() {
 								executing *= -1
 								quickUpdateDebug()
 							case 18: //press O to step
-								fullCycle(true)
+								fullCycle()
 								pause = false
 							case 47: // [ decreases speed of emulation
 								speed -= 10
@@ -258,24 +281,46 @@ func main() {
 			}
 		} else {
 			if time.Since(start) >= (time.Second)/100 {
+				start = time.Now()
+
+				//Draw debug console at 100hz
+				ui.Render(instructionDebug, cpuVDebug, cpuGDebug, cpuStack, debugMode)
+
+				//Play sound if ST > 0
+				if cpu.soundTimer > 0 {
+					speaker.Lock()
+					ctrl.Paused = false
+					speaker.Unlock()
+				} else {
+					speaker.Lock()
+					ctrl.Paused = true
+					speaker.Unlock()
+				}
+
 				if executing == 1 && stepMode == -1 {
-					//Decreasing timers at rate of 100hz rather than 60hz
-					//Because decrements of 0.6 aren't possible
-					//However this isn't too bad considering that doing the buffered cycles usually takes around 5ms
-					if cpu.delayTimer > 0 {
-						cpu.delayTimer--
+					//Decrease timers at 60hz
+					timerCounter++
+					if (timerCounter % 100) < 60 {
+						if cpu.delayTimer > 0 {
+							cpu.delayTimer--
+						}
+						if cpu.soundTimer > 0 {
+							cpu.soundTimer--
+						}
+					} else if timerCounter == 100 {
+						timerCounter = 0
 					}
-					if cpu.soundTimer > 0 {
-						cpu.soundTimer--
-					}
-					//time1 := time.Now()
+
 					for i := 0; i < speed/100; i++ {
 						//execute a certain number of cycles per 1/100th of a second
-						fullCycle(false)
+						fullCycle()
 					}
-					//fmt.Println(time.Since(time1))
+				} else if executing == -1 {
+					//Prevent sound when paused
+					speaker.Lock()
+					ctrl.Paused = true
+					speaker.Unlock()
 				}
-				start = time.Now()
 			}
 			//Handle keyboard inputs
 			for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
