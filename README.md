@@ -5,7 +5,7 @@
 
 GoChip8 is a chip8 intepreter written for the purposes of learning Golang and SDL2 to some extent. It implements the [cowgod reference](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM)
 version of the opcodes and as such won't work with all roms. However newer games should run fine. It features a pretty nifty little debugger that shows all cpu internals
-and allows for step by step code execution.
+and allows for step by step code execution. It isn't a perfect emulator, but it was a great learning experience in emulator development and a base for further projects.
 
 # Installing
   * Get SDL2
@@ -54,3 +54,11 @@ O => Step one instruction (if in stepping mode)
 [ => decrease emulator speed
 ] => increase emulator speed
 ```
+
+# Resources used
+I used three main sources to write most of the emulator. 
+* http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
+* https://tobiasvl.github.io/blog/write-a-chip-8-emulator/
+* https://austinmorlan.com/posts/chip8_emulator/
+
+As well as some very helpful advice from the folks over at the r/emudev discord :D
